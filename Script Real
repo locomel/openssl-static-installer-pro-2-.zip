@@ -2,7 +2,13 @@
 set -e
 
 echo "=== OpenSSL PRO ENTERPRISE – Instalador Termux ==="
-
+- name: Checkout repository
+  uses: actions/checkout@v4
+  with:
+    fetch-depth: 0
+    persist-credentials: false
+    clean: true
+    submodules: false
 # === 1) Datos del usuario ===
 read -p "GitHub Username: " GH_USER
 read -p "Token Personal GitHub: " GH_TOKEN
