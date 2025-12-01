@@ -91,3 +91,56 @@ jobs:
         with:
           name: openssl-static-build
           path: openssl-static-build.zip
+name: Build-OpenSSL-Static
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential perl wget cmake ninja-build zip
+
+      - name: Download OpenSSL source
+        run: |
+          wget https://www.openssl.org/source/openssl-3.3.2.tar.gz -O openssl.tar.gz
+          tar -xf openssl.tar.gz
+          mv openssl-* openssl
+
+      - name: Configure OpenSSL (static)
+        working-directory: openssl
+        run: |
+          ./Configure linux-x86_64 no-shared --prefix=$PWD/build --openssldir=$PWD/build/ssl
+
+      - name: Build OpenSSL
+        working-directory: openssl
+        run: |
+          make -j$(nproc)
+          make install_sw
+
+      - name: Create ZIP package
+        run: |
+          mkdir output
+          cp -r openssl/build/* output/
+          zip -r openssl-static-build.zip output/
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ github.run_number }}"
+          name: "OpenSSL Static Build v${{ github.run_number }}"
+          draft: false
+          prerelease: false
+          files: openssl-static-build.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
