@@ -1,0 +1,98 @@
+name: Build-OpenSSL-macOS-Universal
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install perl
+          brew install make
+          brew install zip
+
+      - name: Download OpenSSL
+        run: |
+          curl -L https://www.openssl.org/source/openssl-3.3.2.tar.gz -o openssl.tar.gz
+          tar -xf openssl.tar.gz
+          mv openssl-* openssl
+
+      #########################################
+      # ⚙️  Build ARM64
+      #########################################
+      - name: Configure ARM64
+        working-directory: openssl
+        run: |
+          ./Configure darwin64-arm64-cc no-shared \
+            --prefix=$PWD/build-arm64 \
+            --openssldir=$PWD/build-arm64/ssl
+
+      - name: Build ARM64
+        working-directory: openssl
+        run: |
+          make clean
+          make -j$(sysctl -n hw.logicalcpu)
+          make install_sw
+
+      #########################################
+      # ⚙️  Build x86_64
+      #########################################
+      - name: Configure x86_64
+        working-directory: openssl
+        run: |
+          ./Configure darwin64-x86_64-cc no-shared \
+            --prefix=$PWD/build-x86_64 \
+            --openssldir=$PWD/build-x86_64/ssl
+
+      - name: Build x86_64
+        working-directory: openssl
+        run: |
+          make clean
+          make -j$(sysctl -n hw.logicalcpu)
+          make install_sw
+
+      #########################################
+      # 🍏 Merge universal FAT binaries
+      #########################################
+      - name: Create Universal macOS Build
+        run: |
+          mkdir -p macos-universal/lib
+          mkdir -p macos-universal/bin
+
+          # Fusionar librerías estáticas
+          lipo -create openssl/build-arm64/lib/libcrypto.a openssl/build-x86_64/lib/libcrypto.a \
+            -output macos-universal/lib/libcrypto.a
+
+          lipo -create openssl/build-arm64/lib/libssl.a openssl/build-x86_64/lib/libssl.a \
+            -output macos-universal/lib/libssl.a
+
+          # Fusionar ejecutables (openssl)
+          lipo -create openssl/build-arm64/bin/openssl openssl/build-x86_64/bin/openssl \
+            -output macos-universal/bin/openssl
+
+          # Copiar includes
+          cp -r openssl/build-arm64/include macos-universal/
+
+          # Empaquetar ZIP
+          zip -r openssl-macos-universal.zip macos-universal/
+
+      #########################################
+      # ⬆️ Upload to Release
+      #########################################
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ github.run_number }}"
+          name: "OpenSSL macOS Universal v${{ github.run_number }}"
+          files: openssl-macos-universal.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
